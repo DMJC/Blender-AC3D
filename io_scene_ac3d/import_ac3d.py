@@ -74,65 +74,68 @@ class AcMat:
 		self.import_config = import_config
 
 	def make_blender_mat(self, bl_mat):
-		bl_mat.specular_shader = 'PHONG'
-		bl_mat.diffuse_color = self.rgb
-		bl_mat.ambient = (self.amb[0] + self.amb[1] + self.amb[2]) / 3.0
-		if self.import_config.use_amb_as_mircol:
-				bl_mat.mirror_color = self.amb
-		bl_mat.emit = (self.emis[0] + self.emis[1] + self.emis[2]) / 3.0
-		if self.import_config.use_emis_as_mircol:
-				bl_mat.mirror_color = self.emis
-		bl_mat.specular_color = self.spec
-		bl_mat.specular_intensity = 1.0
-
-		acMin = 0.0
-		acMax = 128.0
-		blMin = 1.0
-		blMax = 511.0
-		acRange = (acMax - acMin)  
-		blRange = (blMax - blMin)  
-		bl_mat.specular_hardness = int(round((((float(self.shi) - acMin) * blRange) / acRange) + blMin, 0))
-
-		bl_mat.alpha = 1.0 - self.trans
-		if bl_mat.alpha < 1.0:
-			bl_mat.use_transparency = self.import_config.use_transparency
-			bl_mat.transparency_method = self.import_config.transparency_method
-		
-		return bl_mat
+		# Create a new material
+		material = bpy.data.materials.new(name=bl_mat.name)
+		material.use_nodes = True
+		nodes = material.node_tree.nodes
+		links = material.node_tree.links
+    
+		# Remove default Principled BSDF node
+		principled_bsdf_node = nodes.get("Principled BSDF")
+		if principled_bsdf_node:
+			nodes.remove(principled_bsdf_node)
+	
+		# Create Principled BSDF node
+		principled_bsdf_node = nodes.new("ShaderNodeBsdfPrincipled")
+		principled_bsdf_node.location = 0, 0
+	
+		# Set material properties
+		principled_bsdf_node.inputs["Base Color"].default_value = bl_mat.diffuse_color
+		principled_bsdf_node.inputs["Specular"].default_value = 0.5
+		principled_bsdf_node.inputs["Roughness"].default_value = 0.5
+		principled_bsdf_node.inputs["Metallic"].default_value = 0.0
+	
+		# Connect Principled BSDF node to Material Output
+		material_output_node = nodes.get("Material Output")
+		if material_output_node:
+			links.new(principled_bsdf_node.outputs["BSDF"], material_output_node.inputs["Surface"])
+	
+		return material
+#		return bl_mat
 
 	'''
 	looks for a matching blender material (optionally with a texture), adds it if it doesn't exist
 	'''
-	def get_blender_material(self, texrep, tex_name=''):
-		bl_mat = None
-		tex_slot = None
-		if tex_name == '':
-			bl_mat = self.bl_material
-			if bl_mat == None:
-				bl_mat = bpy.data.materials.new(self.name)
-				bl_mat = self.make_blender_mat(bl_mat)
-
-				self.bl_material = bl_mat
-		else:
-			if (tex_name+str(texrep[0])+'-'+str(texrep[1])) in self.bmat_keys:
-				bl_mat = self.bmat_keys[tex_name+str(texrep[0])+'-'+str(texrep[1])]
-			else:
-				bl_mat = bpy.data.materials.new(self.name)
-				bl_mat = self.make_blender_mat(bl_mat)
-				bl_mat.use_face_texture = True
-				bl_mat.use_face_texture_alpha = True
+#	def get_blender_material(self, texrep, tex_name=''):
+#		bl_mat = None
+#		tex_slot = None
+#		if tex_name == '':
+#			bl_mat = self.bl_material
+#			if bl_mat == None:
+#				bl_mat = bpy.data.materials.new	(self.name)
+#				bl_mat = self.make_blender_mat(bl_mat)
+#
+#				self.bl_material = bl_mat
+#		else:
+#			if (tex_name+str(texrep[0])+'-'+str(texrep[1])) in self.bmat_keys:
+#				bl_mat = self.bmat_keys[tex_name+str(texrep[0])+'-'+str(texrep[1])]
+#			else:
+#				bl_mat = bpy.data.materials.new(self.name)
+#				bl_mat = self.make_blender_mat(bl_mat)
+#				bl_mat.use_face_texture = True
+#				bl_mat.use_face_texture_alpha = True
 				
-				tex_slot = bl_mat.texture_slots.add()
-				tex_slot.texture = self.get_blender_texture(tex_name, texrep)
-				tex_slot.texture_coords = 'UV'
-				tex_slot.alpha_factor = 1.0
-				tex_slot.use_map_alpha = True
-				tex_slot.use = True
-				tex_slot.uv_layer = 'UVMap'
-				tex_slot.texture.repeat_x = texrep[0]
-				tex_slot.texture.repeat_y = texrep[1]
-				self.bmat_keys[tex_name+str(texrep[0])+'-'+str(texrep[1])] = bl_mat
-		return bl_mat
+#				tex_slot = bl_mat.texture_slots.add()
+#				tex_slot.texture = self.get_blender_texture(tex_name, texrep)
+#				tex_slot.texture_coords = 'UV'
+#				tex_slot.alpha_factor = 1.0
+#				tex_slot.use_map_alpha = True
+#				tex_slot.use = True
+#				tex_slot.uv_layer = 'UVMap'
+#				tex_slot.texture.repeat_x = texrep[0]
+#				tex_slot.texture.repeat_y = texrep[1]
+#				self.bmat_keys[tex_name+str(texrep[0])+'-'+str(texrep[1])] = bl_mat
+#		return bl_mat
 
 	'''
 	looks for the image in blender, adds it if it doesn't exist, returns the image to the callee
@@ -240,7 +243,7 @@ class AcObj:
 		for n in range(vertex_count):
 			line = ac_file.readline()
 			line = line.strip().split()
-			self.vert_list.append(self.import_config.global_matrix * Vector([float(x) for x in line]))
+			self.vert_list.append(self.import_config.global_matrix @ Vector([float(x) for x in line]))
 
 	def read_surfaces(self, ac_file, toks):
 		surf_count = int(toks[1])
@@ -268,7 +271,7 @@ class AcObj:
 		return False
 
 	def read_location(self, ac_file, toks):
-		self.location=(self.import_config.global_matrix * Vector([float(x) for x in toks[1:4]]))
+		self.location=(self.import_config.global_matrix @ Vector([float(x) for x in toks[1:4]]))
 		return False
 
 	def read_rotation(self, ac_file, toks):
@@ -369,24 +372,24 @@ class AcObj:
 						
 						# Material index is 1 based, the list we built is 0 based
 						ac_material = ac_matlist[surf.mat_index]
-						bl_material = ac_material.get_blender_material(self.texrep, self.tex_name)
+#						bl_material = ac_material.get_blender_material(self.texrep, self.tex_name)
 
-						if bl_material == None:
-							TRACE("Error getting material {0} '{1}'".format(surf.mat_index, self.tex_name))
+#						if bl_material == None:
+#							TRACE("Error getting material {0} '{1}'".format(surf.mat_index, self.tex_name))
 
-						fm_index = 0
-						if not bl_material.name in me.materials:
-							me.materials.append(bl_material)
-							fm_index = len(me.materials)-1
-						else:
-							for mat in me.materials:
-								if mat == bl_material:
-									continue
-								fm_index += 1
-							if fm_index > len(me.materials):
-								TRACE("Failed to find material index")
-								fm_index = 0
-						self.face_mat_list.append(fm_index)
+#						fm_index = 0
+#						if not bl_material.name in me.materials:
+#							me.materials.append(bl_material)
+#							fm_index = len(me.materials)-1
+#						else:
+#							for mat in me.materials:
+#								if mat == bl_material:
+#									continue
+#								fm_index += 1
+#							if fm_index > len(me.materials):
+#								TRACE("Failed to find material index")
+#								fm_index = 0
+#						self.face_mat_list.append(fm_index)
 				else:
 					# treating as a polyline (nothing more to do)
 					pass
@@ -403,7 +406,7 @@ class AcObj:
 
 			
 			if has_uv:
-				uvtex = me.uv_textures.new()
+				uvtex = me.uv_layers.new()
 				if uvtex:
 					uvtexdata = me.uv_layers.active.data[:]
 					
@@ -415,23 +418,23 @@ class AcObj:
 
 							for vert_index in range(len(surf.uv_refs)):
 								uvtexdata[uv_pointer+vert_index].uv = surf.uv_refs[vert_index]
-							if len(self.tex_name):
+#							if len(self.tex_name):
 								# we do the check here to allow for import of UV without texture
-								surf_material = me.materials[self.face_mat_list[i]]
-								uvtex.data[i].image = surf_material.texture_slots[0].texture.image
-							uv_pointer += len(surf.uv_refs)
-			
-			me.show_double_sided = two_sided_lighting
-			self.bl_obj.show_transparent = self.import_config.display_transparency
+#								surf_material = me.materials[self.face_mat_list[i]]
+#BROKEN REWRITE								uvtex.data[i].image = surf_material.texture_slots[0].texture.image
+#							uv_pointer += len(surf.uv_refs)
+#			
+#			me.show_double_sided = two_sided_lighting
+#			self.bl_obj.show_transparent = self.import_config.display_transparency
 
 		if self.bl_obj:
 			self.bl_obj.rotation_euler = self.rotation.to_euler()
 
 			self.bl_obj.location = self.location
-			
-			self.import_config.context.scene.objects.link(self.bl_obj)
+			self.import_config.context.collection.objects.link(self.bl_obj)
+#			self.import_config.context.scene.objects.link(self.bl_obj)
 # There's a bug somewhere - this ought to work....
-			self.import_config.context.scene.objects.active = self.bl_obj
+#			self.import_config.context.scene.objects.active = self.bl_obj
 #			bpy.ops.object.origin_set('ORIGIN_GEOMETRY', 'MEDIAN')
 			
 
@@ -638,8 +641,8 @@ class ImportAC3D:
 			for bl_area in bl_screen.areas:
 				for bl_space in bl_area.spaces:
 					if bl_space.type == 'VIEW_3D':
-						bl_space.show_textured_solid = self.import_config.display_textured_solid
-
+						bl_space.shading.type = 'SOLID'
+#						bl_space.shading.show_textured = True
 
 		return None
 
@@ -662,7 +665,8 @@ class ImportAC3D:
 					self.tokens[row[0]](ac_file,row)
 				else:
 					self.report_error("invalid token: {tok} ({ln})".format(tok=row[0], ln=row))				
-		except csv.Error(e):
+#		except csv.Error(e):
+		except csv.Error:
 			self.report_error('AC3D import error, line %d: %s' % (reader.line_num, e))
 
 	'''

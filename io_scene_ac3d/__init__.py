@@ -28,14 +28,14 @@ import bpy
 import mathutils
 from math import radians
 from bpy.props import StringProperty, BoolProperty, FloatProperty, EnumProperty
-from bpy_extras.io_utils import ImportHelper, ExportHelper, axis_conversion
+from bpy_extras.io_utils import ImportHelper, ExportHelper, orientation_helper, axis_conversion
 
 bl_info = {
 	"name": "AC3D (.ac) format",
 	"description": "AC3D model exporter for blender.",
 	"author": "Chris Marr",
 	"version": (2,0),
-	"blender" : (2,6,0),
+	"blender" : (3, 4, 1),
 	"api": 41098,
 	"location": "File > Import-Export",
 	"warning": "",
@@ -56,24 +56,10 @@ if "bpy" in locals():
 def menu_func_import(self, context):
 	self.layout.operator(ImportAC3D.bl_idname, text='AC3D (.ac)')
 
-
 def menu_func_export(self, context):
 	self.layout.operator(ExportAC3D.bl_idname, text='AC3D (.ac)')
 
-
-def register():
-	bpy.utils.register_module(__name__)
-	bpy.types.INFO_MT_file_import.append(menu_func_import)
-	bpy.types.INFO_MT_file_export.append(menu_func_export)
-
-def unregister():
-	bpy.utils.unregister_module(__name__)
-	bpy.types.INFO_MT_file_import.remove(menu_func_import)
-	bpy.types.INFO_MT_file_export.remove(menu_func_export)
-
-if __name__ == "__main__":
-	register()
-
+@orientation_helper(axis_forward='Y', axis_up='Z')
 class ImportAC3D(bpy.types.Operator, ImportHelper):
 	'''Import from AC3D file format (.ac)'''
 	bl_idname = 'import_scene.import_ac3d'
@@ -82,18 +68,6 @@ class ImportAC3D(bpy.types.Operator, ImportHelper):
 
 	filename_ext = '.ac'
 	filter_glob = StringProperty(default='*.ac', options={'HIDDEN'})
-
-	axis_forward = EnumProperty(
-							name="Forward",
-							items=(('X', "X Forward", ""),
-								('Y', "Y Forward", ""),
-								('Z', "Z Forward", ""),
-								('-X', "-X Forward", ""),
-								('-Y', "-Y Forward", ""),
-								('-Z', "-Z Forward", ""),
-							),
-							default='-Z',
-						)
 
 	axis_up = EnumProperty(
 							name="Up",
@@ -161,14 +135,11 @@ class ImportAC3D(bpy.types.Operator, ImportHelper):
 										).to_4x4()
 
 		keywords["global_matrix"] = global_matrix
-
-		t = time.mktime(datetime.datetime.now().timetuple())
 		import_ac3d.ImportAC3D(self, context, **keywords)
-		t = time.mktime(datetime.datetime.now().timetuple()) - t
-		print('Finished importing in', t, 'seconds')
-
 		return {'FINISHED'}
+#		return import_ac3d.ImportAC3D(self, context, **keywords)
 
+@orientation_helper(axis_forward='Y', axis_up='Z')
 class ExportAC3D(bpy.types.Operator, ExportHelper):
 	'''Export to AC3D file format (.ac)'''
 	bl_idname = 'export_scene.export_ac3d'
@@ -181,18 +152,6 @@ class ExportAC3D(bpy.types.Operator, ExportHelper):
 							default='*.ac',
 							options={'HIDDEN'}
 							)
-
-	axis_forward = EnumProperty(
-								name="Forward",
-								items=(('X', "X Forward", ""),
-									('Y', "Y Forward", ""),
-									('Z', "Z Forward", ""),
-									('-X', "-X Forward", ""),
-									('-Y', "-Y Forward", ""),
-									('-Z', "-Z Forward", ""),
-									),
-								default='-Z',
-								)
 
 	axis_up = EnumProperty(
 							name="Up",
@@ -243,29 +202,39 @@ class ExportAC3D(bpy.types.Operator, ExportHelper):
 							unit="ROTATION",
 							subtype="ANGLE",
 							)
-# This behaviour from the original exporter - not applicable?
-#	no_split = BoolProperty(
-#							name="No Split",
-#							description="don't split meshes with multiple textures (or both textured and non-textured polygons)",
-#							default=True,
-#							)
+
 	def execute(self, context):
 		from . import export_ac3d
+		
 		keywords = self.as_keywords(ignore=("axis_forward",
 											"axis_up",
 											"filter_glob",
-											"check_existing",
+#											"check_existing",
 											))
-
 		global_matrix = axis_conversion(to_forward=self.axis_forward,
 										to_up=self.axis_up,
 										).to_4x4()
-
 		keywords["global_matrix"] = global_matrix
-		t = time.mktime(datetime.datetime.now().timetuple())
-		export_ac3d.ExportAC3D(self, context, **keywords)
-		t = time.mktime(datetime.datetime.now().timetuple()) - t
-		print('Finished exporting in', t, 'seconds')
 
+#		return export_ac3d.ExportAC3D(self, context, **keywords)
 		return {'FINISHED'}
+
+classes = (ImportAC3D, ExportAC3D)
+
+def register():
+	from bpy.utils import register_class
+	for cls in classes:
+		register_class(cls)
+	bpy.types.TOPBAR_MT_file_import.append(menu_func_import)
+	bpy.types.TOPBAR_MT_file_export.append(menu_func_export)
+
+def unregister():
+	from bpy.utils import unregister_class
+	for cls in reversed(classes):
+		unregister_class(cls)
+	bpy.types.TOPBAR_MT_file_import.remove(menu_func_import)
+	bpy.types.TOPBAR_MT_file_export.remove(menu_func_export)
+
+if __name__ == "__main__":
+	register()
 
